@@ -1658,6 +1658,14 @@ window.WP_MODULOS_HTML.kpi = function (res) {
     const tkDe = (turno) => String(turno || "").split("/")[0].toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 10);
     const kCap = (fechaId, linea, idx, turno) => fechaId + "_" + String(linea) + "_" + idx + "_" + (typeof turno === "string" && turno.length <= 10 && !/\//.test(turno) ? turno : tkDe(turno));
     const turnoEsManana = (turno) => { const r = rangoTurno(turno); return !r || r.ini === 420; };
+    // Mismo turno aunque el texto cambie un poco ("F / 23:30 - 07:00 / LS" = "F/23:30-07:00/LS")
+    const mismoTurno = (a, b) => {
+      if (norm(a) === norm(b)) return true;
+      const ra = rangoTurno(a), rb = rangoTurno(b);
+      return !!ra && !!rb && ra.ini === rb.ini && ra.fin === rb.fin && tkDe(a) === tkDe(b);
+    };
+    // Config del ADMIN para el turno (vacía = no cuenta: se usa la hoja)
+    const asignacionDe = (turno) => { const a = asignacionesConfig[claveTurno(turno)]; return (a && Array.isArray(a.lineas) && a.lineas.length) ? a : null; };
 
     // ---------- Líneas y supervisores de cada turno ----------
     // config/asignaciones (lo edita el ADMIN aquí) > hoja Config_Lineas_Produccion (una línea, un turno)
@@ -1674,13 +1682,14 @@ window.WP_MODULOS_HTML.kpi = function (res) {
     }
     function definicionTurno(turno) {        // [{ linea, area, supervisor, meta }] sin datos de producción
       const p = pizarronActual || {};
-      const a = asignacionesConfig[claveTurno(turno)];
-      if (a && Array.isArray(a.lineas)) {
+      const a = asignacionDe(turno);
+      if (a) {
         return a.lineas.map((x) => ({ linea: String(x.linea), area: String(x.area || (p.base && p.base[x.linea] && p.base[x.linea].area) || ""),
                                       supervisor: String(x.supervisor || ""), meta: parseInt(x.meta, 10) || 0,
                                       metas: Array.isArray(x.metas) ? x.metas.map((n) => (n === null || n === "" || n === undefined) ? null : (parseInt(n, 10) || 0)) : null }));
       }
-      return (p.lineas || []).filter((l) => norm(l.turno) === norm(turno))
+      const vistas = new Set();
+      return (p.lineas || []).filter((l) => mismoTurno(l.turno, turno) && !vistas.has(String(l.linea)) && vistas.add(String(l.linea)))
         .map((l) => ({ linea: String(l.linea), area: String(l.area || ""), supervisor: String(l.supervisor || ""), meta: 0, metas: null }));
     }
     function lineasDelTurno(turno, area) {   // area vacía = todas
@@ -1692,14 +1701,18 @@ window.WP_MODULOS_HTML.kpi = function (res) {
       const inst = instanciaTurno(turno);
       return lista.map((x) => {
         const kp = x.linea + "|" + claveTurno(turno);
-        const b = (p.base && (p.base[kp] || p.base[x.linea])) || (p.lineas || []).find((l) => String(l.linea) === x.linea && norm(l.turno) === norm(turno)) || {};
+        const deHoja = (p.lineas || []).find((l) => String(l.linea) === x.linea && mismoTurno(l.turno, turno));
+        const b = (p.base && (p.base[kp] || (deHoja && p.base[x.linea + "|" + claveTurno(deHoja.turno)]) || (turnoEsManana(turno) ? p.base[x.linea] : null))) || deHoja || (p.base && p.base[x.linea]) || {};
         const metas = {};
         filas.forEach((f, pos) => { metas[f.idx] = metaDeFila(x, f, pos, filas.length, b.metas); });
         // Capturas: por línea + turno (las filas viejas sin turno son del turno de las 7:00)
         const delDia = (p.reales && p.reales[inst.fecha]) || {};
-        const r = delDia[kp] || (turnoEsManana(turno) ? delDia[x.linea] : null)
-               || (inst.fecha === p.fecha ? (p.lineas || []).find((l) => String(l.linea) === x.linea && norm(l.turno) === norm(turno)) : null) || {};
-        return { ...x, turno, metas, real: r.real || [], det: r.det || [], fechaId: inst.fechaId, fecha: inst.fecha };
+        const r = delDia[kp] || (deHoja ? delDia[x.linea + "|" + claveTurno(deHoja.turno)] : null) || (turnoEsManana(turno) ? delDia[x.linea] : null)
+               || (inst.fecha === p.fecha && deHoja ? deHoja : null) || {};
+        // Una hora que todavía no empieza no puede tener piezas: si llega algo ahí es de otro turno y no se pinta
+        const real = (r.real || []).slice(), det = (r.det || []).slice();
+        filas.forEach((f) => { if (f.iniAbs > inst.nowRel) { real[f.idx] = null; det[f.idx] = null; } });
+        return { ...x, turno, metas, real, det, fechaId: inst.fechaId, fecha: inst.fecha };
       });
     }
     // Meta de una fila: la que puso el ADMIN hora por hora > meta por hora (proporcional si la fila es de media hora) > la hoja
@@ -3749,7 +3762,7 @@ window.WP_MODULOS_HTML.kpi = function (res) {
       if (perfilActual?.rol !== "ADMIN" || !pizarronActual) return;
       lnTurno = turnoActual; lnArea = areaActual;
       $("ln-titulo").textContent = "Líneas y supervisores · " + lnTurno;
-      const deHoja = !asignacionesConfig[claveTurno(lnTurno)];
+      const deHoja = !asignacionDe(lnTurno);
       $("ln-sub").textContent = "Área " + lnArea + (deHoja ? " · ahora se toma de la hoja Config_Lineas_Produccion" : " · configurado desde aquí");
       $("ln-hoja").hidden = deHoja;
       const sups = new Set(((pizarronActual.catalogos && pizarronActual.catalogos.supervisores) || []).map(String));
