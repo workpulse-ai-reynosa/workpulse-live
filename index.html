@@ -156,6 +156,20 @@
     table.plan td.res { font-weight: 900; min-width: 54px; }
     .plan-leyenda { display: flex; gap: 14px; flex-wrap: wrap; font-size: 11px; font-weight: 800; color: var(--gris); margin: 8px 2px 0; }
     .plan-leyenda i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -2px; margin-right: 4px; }
+    .plan-barra button.plan-ant { background: #fbbf24; color: #0f172a; }
+    .plan-barra button.plan-ant.activo { background: #0f172a; color: #fff; }
+    #plan.anterior .plan-barra { background: #334155; }
+    table.plan td.c .dtm { display: block; font-size: 9px; font-weight: 900; color: #b45309; }
+    table.plan td.c[style*="background"] .dtm { color: inherit; }
+    table.plan td.c.confalla { cursor: help; outline: 2px dashed #f59e0b; outline-offset: -3px; }
+    .plan-fallas { margin-top: 12px; background: #fff; border: 2px solid var(--texto); border-radius: 8px; overflow: auto; }
+    .plan-fallas h3 { margin: 0; padding: 8px 12px; background: #0f172a; color: #fff; font-size: 13px; letter-spacing: .5px; }
+    .plan-fallas table { border-collapse: collapse; width: 100%; font-size: 12px; }
+    .plan-fallas th { background: #e4e4e7; text-align: left; padding: 6px 8px; font-size: 10px; text-transform: uppercase; position: sticky; top: 0; }
+    .plan-fallas td { padding: 6px 8px; border-bottom: 1px solid #e4e4e7; vertical-align: top; }
+    .plan-fallas td.n { text-align: right; font-weight: 900; white-space: nowrap; }
+    .plan-fallas .top { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 12px; }
+    .plan-fallas .top span { background: #fef3c7; border: 1px solid #fcd34d; border-radius: 999px; padding: 4px 10px; font-weight: 800; font-size: 11px; }
     @media (max-width: 768px) { .plan-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } .plan-barra label { margin-left: 0; } }
     td.hora.edit-hora { cursor: pointer; touch-action: manipulation; user-select: none; }
     td.hora.edit-hora:hover { background: #ecfdf5; }
@@ -345,7 +359,7 @@
     .btn-lineas:hover { background: #ffedd5; }
     .btn-lineas[hidden] { display: none; }
     .campo[hidden] { display: none !important; }
-    [data-abrir][hidden], #btn-plan[hidden], #btn-sekaia[hidden], #btn-modo-tv[hidden] { display: none !important; }   /* botones que ese puesto no ve */
+    [data-abrir][hidden], #btn-plan[hidden], #btn-dia-ant[hidden], #btn-sekaia[hidden], #btn-modo-tv[hidden] { display: none !important; }   /* botones que ese puesto no ve */
     #tv .btn-lineas { display: none; }
     .modal-card.ancho { max-width: 760px; }
     .ln-copiar { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 10px; }
@@ -536,6 +550,7 @@
     </div>
     <div class="btn-group">
         <button type="button" class="btn btn-plan" id="btn-plan">Plan Overview</button>
+        <button type="button" class="btn" id="btn-dia-ant" hidden style="--c:#334155; --t:#334155; --f:#f1f5f9;" title="Plan Overview del día que ya cerró (7:00 a 7:00) con fallas y tiempos muertos">Día anterior</button>
         <button type="button" class="btn" id="btn-sekaia" style="--c:#8b5cf6; --t:#8b5cf6; --f:#f5f3ff;">SekaIA</button>
         <button type="button" class="btn" data-abrir="T10FUGAS" style="--c:#d97706; --t:#d97706; --f:#fffbeb;">T10 Fugas</button>
         <button type="button" class="btn" data-abrir="TMTTO" style="--c:#2563eb; --t:#2563eb; --f:#eff6ff;">T/MTTO</button>
@@ -664,18 +679,21 @@
             <button type="button" class="btn-sec" id="btn-qr">Ver e imprimir QR</button>
           </div>
           <div class="admin-caja" style="margin-top:16px;">
-            <h3>Reporte de fin de turno (correo)</h3>
-            <p class="cambio" style="text-align:left;margin:0 0 10px;">Al terminar cada turno se manda a estos correos: cumplimiento por línea, downtime 6M, top fallas, horas críticas y horas sin captura.</p>
+            <h3>Reporte por correo</h3>
+            <p class="cambio" style="text-align:left;margin:0 0 10px;">Se manda a estos correos: cumplimiento por línea, downtime 6M, top fallas, horas críticas y horas sin captura. En modo "día completo" lleva además el Plan Overview de todos los turnos (7:00 a 7:00), las fallas y el tiempo muerto de cada hora, y un PDF.</p>
             <form class="form" id="form-reporte" novalidate>
-              <label class="rep-check"><input type="checkbox" id="rep-activo"> Enviar automáticamente al terminar cada turno</label>
+              <label class="rep-check"><input type="checkbox" id="rep-activo"> Enviar automáticamente</label>
+              <label class="campo">Qué reporte
+                <select id="rep-modo"><option value="dia" selected>Día completo (7:00 a 7:00, todos los turnos): uno al día</option>
+                  <option value="turno">Uno al terminar cada turno</option></select></label>
               <label class="campo">Correos de gerencia
                 <textarea id="rep-correos" rows="3" spellcheck="false" placeholder="gerente@nidec-ga.com, superintendente@nidec-ga.com"></textarea>
                 <small>Separados por coma o uno por renglón. Máximo 30.</small></label>
               <label class="campo">Mandarlo
                 <select id="rep-minutos"><option value="5">5 minutos después del fin del turno</option><option value="10" selected>10 minutos después del fin del turno</option>
                   <option value="15">15 minutos después del fin del turno</option><option value="30">30 minutos después del fin del turno</option>
-                  <option value="60">1 hora después del fin del turno</option></select>
-                <small>Da tiempo a que los supervisores terminen de capturar.</small></label>
+                  <option value="60">1 hora después del fin del turno</option><option value="120">2 horas después del fin del turno</option></select>
+                <small>Da tiempo a que los supervisores terminen de capturar. En día completo cuenta desde las 7:00 (fin del turno F).</small></label>
               <button type="submit" class="btn-sec">Guardar</button>
               <p class="login-msg" id="rep-msg"></p>
             </form>
@@ -808,13 +826,15 @@
   <section id="plan" hidden aria-label="Plan Overview">
     <div class="plan-barra">
       <button type="button" id="plan-cerrar">&larr; Regresar</button>
-      <h2>PLAN OVERVIEW</h2>
+      <h2 id="plan-titulo">PLAN OVERVIEW</h2>
       <span class="plan-fecha" id="plan-fecha"></span>
+      <button type="button" class="plan-ant" id="plan-anterior" hidden>Ver día anterior</button>
       <label>ÁREA <select id="plan-area"></select></label>
     </div>
     <div class="plan-cuerpo">
       <div class="plan-kpis" id="plan-kpis"></div>
       <div class="plan-tabla-wrap" id="plan-tabla"><div class="vacio">Cargando…</div></div>
+      <div class="plan-fallas" id="plan-fallas" hidden></div>
       <div class="plan-leyenda">
         <span><i style="background:#009B4A"></i>≥ 95% de la meta</span>
         <span><i style="background:#fbff00"></i>90 – 94%</span>
@@ -1640,6 +1660,7 @@ window.WP_MODULOS_HTML.kpi = function (res) {
     // El día va de 07:00 a 07:00. Un turno se ve con la fecha en que EMPEZÓ: F (23:30-07:00) a las 3 a.m. es el de ayer.
     // Se puede capturar hasta las 9:00 del día siguiente (igual que en Apps Script).
     const LIMITE_CAPTURA = 1440 + 420 + 120;
+    const LIMPIA_ANTES = 60;        // cada pizarrón se limpia 1 hora antes de que empiece su turno (el anterior queda en "Día anterior")
     const fechaDMY = (d) => pad2(d.getDate()) + "/" + pad2(d.getMonth() + 1) + "/" + d.getFullYear();
     const fechaISO = (d) => d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate());
     function instanciaTurno(turno) {
@@ -1648,7 +1669,7 @@ window.WP_MODULOS_HTML.kpi = function (res) {
       const ini = filas.length ? filas[0].iniAbs : 420;
       const ult = filas[filas.length - 1];
       const fin = ult ? ult.iniAbs + durFila(ult) : 960;
-      const dias = (m >= ini - MINUTOS_ANTES) ? 0 : 1;           // ¿ya empezó hoy? si no, el que empezó ayer
+      const dias = (m >= ini - LIMPIA_ANTES) ? 0 : 1;            // 1 h antes de empezar ya se ve el turno nuevo (limpio)
       const nowRel = m + dias * 1440;
       const d = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate() - dias, 12);
       return { fecha: fechaDMY(d), fechaId: fechaISO(d), nowRel, ayer: dias === 1,
@@ -2267,6 +2288,8 @@ window.WP_MODULOS_HTML.kpi = function (res) {
     function aplicarPermisosBotones() {
       document.querySelectorAll("[data-abrir]").forEach((b) => { b.hidden = !puedeVerModulo(b.dataset.abrir); });
       [["btn-plan", "PLAN"], ["btn-sekaia", "SEKAIA"], ["btn-modo-tv", "TV"]].forEach(([id, k]) => { const b = $(id); if (b) b.hidden = !puedeVerModulo(k); });
+      $("btn-dia-ant").hidden = !puedeVerDiaAnterior();
+      $("plan-anterior").hidden = !puedeVerDiaAnterior();
     }
     const soloVer = (rol) => rol !== "ADMIN" && rol !== "SUPERVISOR" && rol !== "CENTRAL";
     const esCentral = () => perfilActual?.rol === "CENTRAL";
@@ -2919,13 +2942,66 @@ window.WP_MODULOS_HTML.kpi = function (res) {
     // ---------- PLAN OVERVIEW ----------
     const HORAS_PLAN = Array.from({ length: 24 }, (_, i) => [aHora(420 + i * 60), aHora(480 + i * 60)]);
     let planActual = null;
+    // Día anterior: el 7 a 7 que ya cerró, con fallas y tiempos muertos (solo ADMIN, gerentes, superintendentes e ingenieros)
+    const ROLES_DIA_ANTERIOR = ["ADMIN", "GERENCIA", "SUPERINTENDENTE", "INGENIERO"];
+    const puedeVerDiaAnterior = () => !!perfilActual && ROLES_DIA_ANTERIOR.includes(perfilActual.rol);
+    let planModo = "hoy", planAnterior = null, planAnteriorTot = null, cancelarDiaAnterior = null, planAnteriorMsg = "Cargando el día anterior…";
+    function escucharDiaAnterior() {
+      if (cancelarDiaAnterior || !puedeVerDiaAnterior()) return;
+      cancelarDiaAnterior = onSnapshot(doc(db, "resumen_ejecutivo", "dia_anterior"), (snap) => {
+        if (!snap.exists()) { planAnterior = null; planAnteriorMsg = "El día anterior todavía no se publica (llega en la próxima actualización de Apps Script)."; }
+        else { const d = snap.data(); planAnterior = leerJSON(d.plan, null); planAnteriorTot = leerJSON(d.totales, null); }
+        pintarPlan();
+      }, (e) => { planAnterior = null; planAnteriorMsg = "No se pudo leer el día anterior: " + mensajeAuth(e); pintarPlan(); });
+    }
+    function dejarDiaAnterior() { if (cancelarDiaAnterior) { cancelarDiaAnterior(); cancelarDiaAnterior = null; } }
+    function modoPlan(m) {
+      planModo = m === "anterior" && puedeVerDiaAnterior() ? "anterior" : "hoy";
+      if (planModo === "anterior") escucharDiaAnterior();
+      $("plan").classList.toggle("anterior", planModo === "anterior");
+      $("plan-titulo").textContent = planModo === "anterior" ? "DÍA ANTERIOR" : "PLAN OVERVIEW";
+      $("plan-anterior").textContent = planModo === "anterior" ? "← Ver hoy" : "Ver día anterior";
+      $("plan-anterior").classList.toggle("activo", planModo === "anterior");
+      pintarPlan();
+    }
+    function pintarFallasDia(pl, lineas) {
+      const caja = $("plan-fallas");
+      if (planModo !== "anterior" || !pl) { caja.hidden = true; return; }
+      caja.hidden = false;
+      const filas = [];
+      lineas.forEach((l) => (l.eventos || []).forEach((ev) => filas.push({ l, ev })));
+      const nodos = [el("h3", null, "FALLAS Y TIEMPO MUERTO POR HORA · " + filas.length + " registro(s)")];
+      const top = (planAnteriorTot && Array.isArray(planAnteriorTot.topFallas)) ? planAnteriorTot.topFallas : [];
+      if (top.length) {
+        const d = el("div", "top");
+        top.slice(0, 8).forEach((f) => d.appendChild(el("span", null, f.causa + " · " + f.mins + " min · " + (f.lineas || []).join(", "))));
+        nodos.push(d);
+      }
+      if (!filas.length) { nodos.push(el("div", "vacio", "Sin fallas ni tiempo muerto registrados ese día.")); caja.replaceChildren(...nodos); return; }
+      const t = el("table"), trh = el("tr");
+      ["Línea", "Turno", "Hora", "Real / meta", "Falla / comentario", "Min", "6M"].forEach((x) => trh.appendChild(el("th", null, x)));
+      t.appendChild(trh);
+      const N6 = { hombre: "Hombre", maquina: "Máquina", material: "Material", metodo: "Método", calidad: "Calidad", produccion: "Producción", otros: "Otros" };
+      filas.forEach(({ l, ev }) => {
+        const tr = el("tr");
+        tr.append(el("td", null, "L" + l.linea), el("td", null, ev.turno || "—"), el("td", null, ev.hora || ""),
+                  el("td", "n", (ev.real === null || ev.real === undefined ? "—" : ev.real) + " / " + (ev.meta || "—")),
+                  el("td", null, [ev.falla, ev.comentario].filter(Boolean).join(" · ") || "SIN CAUSA REGISTRADA"),
+                  el("td", "n", (ev.mins || 0) + " min"),
+                  el("td", null, Object.entries(ev.dt6M || {}).map(([k, v]) => (N6[k] || k) + " " + v).join(", ") || "—"));
+        t.appendChild(tr);
+      });
+      nodos.push(t);
+      caja.replaceChildren(...nodos);
+    }
     function pintarPlan(pl) {
       if (pl !== undefined) planActual = pl;
-      pl = planActual;
+      pl = planModo === "anterior" ? planAnterior : planActual;
       if ($("plan").hidden) return;
       const cont = $("plan-tabla");
-      if (!pl) { vacio(cont, "El Plan Overview todavía no se publica (llega en la próxima actualización de Apps Script)."); return; }
-      if (pl.error) { vacio(cont, "No se pudo armar el Plan Overview: " + pl.error); return; }
+      const anterior = planModo === "anterior";
+      if (!pl) { $("plan-fallas").hidden = true; vacio(cont, anterior ? planAnteriorMsg : "El Plan Overview todavía no se publica (llega en la próxima actualización de Apps Script)."); return; }
+      if (pl.error) { $("plan-fallas").hidden = true; vacio(cont, "No se pudo armar el Plan Overview: " + pl.error); return; }
       const todas = Array.isArray(pl.lineas) ? pl.lineas : [];
       const areas = ["TODAS", ...new Set(todas.map((l) => String(l.area || "").toUpperCase()).filter(Boolean))];
       const sel = $("plan-area");
@@ -2968,6 +3044,7 @@ window.WP_MODULOS_HTML.kpi = function (res) {
           const vencida = i < idxAhora;
           const td = el("td", "c" + (i === idxAhora ? " ahora" : ""));
           sMeta += meta; totMeta[i] += meta; sDt += num(l.dt?.[i]);
+          const dtH = num(l.dt?.[i]), fallaH = l.falla?.[i] || "";
           if (hay) {
             const v = num(r);
             td.textContent = v; td.appendChild(el("small", null, meta || "—"));
@@ -2980,6 +3057,11 @@ window.WP_MODULOS_HTML.kpi = function (res) {
             td.title = "Hora pasada sin captura";
           } else {
             td.classList.add("fut"); td.appendChild(el("small", null, meta));
+          }
+          if (anterior && (dtH > 0 || fallaH)) {
+            if (dtH > 0) td.appendChild(el("span", "dtm", "⏱ " + dtH + "'"));
+            td.classList.add("confalla");
+            td.title = "Línea " + l.linea + " · " + HORAS_PLAN[i].join("-") + (fallaH ? "\nFalla: " + fallaH : "") + (dtH ? "\nParo: " + dtH + " min" : "");
           }
           tr.appendChild(td);
         }
@@ -3006,29 +3088,34 @@ window.WP_MODULOS_HTML.kpi = function (res) {
       tbody.appendChild(trt);
       t.append(thead, tbody);
       cont.replaceChildren(lineas.length ? t : el("div", "vacio", "No hay líneas activas en esta área."));
+      pintarFallasDia(pl, lineas);
 
       const kpi = (valor, etiqueta, color) => { const d = el("div", "plan-kpi"); const b = el("b", null, valor); if (color) b.style.color = color; d.append(b, el("span", null, etiqueta)); return d; };
       $("plan-kpis").replaceChildren(
         kpi(lineas.length, "Líneas activas"),
         kpi(gMeta.toLocaleString("es-MX"), "Meta del día (7 a 7)"),
-        kpi(gReal.toLocaleString("es-MX"), "Real acumulado"),
-        kpi(gMetaVencida > 0 ? gPct + "%" : "—", "Avance vs meta a la hora", gMetaVencida > 0 ? andon(gReal, gMetaVencida).bg.replace("#fbff00", "#b45309") : null),
-        kpi(conFalta, "Líneas con horas sin capturar", conFalta ? "#dc2626" : "#009B4A"));
+        kpi(gReal.toLocaleString("es-MX"), anterior ? "Real del día" : "Real acumulado"),
+        kpi(gMetaVencida > 0 ? gPct + "%" : "—", anterior ? "Cumplimiento del día" : "Avance vs meta a la hora", gMetaVencida > 0 ? andon(gReal, gMetaVencida).bg.replace("#fbff00", "#b45309") : null),
+        anterior ? kpi(gDt.toLocaleString("es-MX") + " min", "Tiempo muerto total", gDt ? "#b45309" : "#009B4A")
+                 : kpi(conFalta, "Líneas con horas sin capturar", conFalta ? "#dc2626" : "#009B4A"));
     }
-    function abrirPlan(conHistorial = true) {
+    function abrirPlan(conHistorial = true, modo = "hoy") {
       $("plan").hidden = false;
       document.body.style.overflow = "hidden";
       if (conHistorial) history.pushState({ wpPlan: 1 }, "");
-      pintarPlan();
+      modoPlan(modo);
     }
     function cerrarPlan(desdeHistorial = false) {
       if ($("plan").hidden) return;
       $("plan").hidden = true;
+      dejarDiaAnterior();
       document.body.style.overflow = "";
       if (!desdeHistorial && history.state && history.state.wpPlan) history.back();
       else if (/[?&]ver=plan/.test(location.search)) history.replaceState(null, "", location.pathname);
     }
     $("btn-plan").addEventListener("click", () => abrirPlan());
+    $("btn-dia-ant").addEventListener("click", () => abrirPlan(true, "anterior"));
+    $("plan-anterior").addEventListener("click", () => modoPlan(planModo === "anterior" ? "hoy" : "anterior"));
     $("plan-cerrar").addEventListener("click", () => cerrarPlan());
     $("plan-area").addEventListener("change", () => pintarPlan());
     window.addEventListener("popstate", () => { if (!$("plan").hidden) cerrarPlan(true); });
@@ -3861,7 +3948,7 @@ window.WP_MODULOS_HTML.kpi = function (res) {
     }
     async function cargarReporte() {
       const sel = $("rep-fin");
-      sel.replaceChildren(new Option("Todo el día (corte actual)", ""));
+      sel.replaceChildren(new Option("Día completo anterior (7:00 a 7:00)", "DIA"), new Option("Día en curso (7 a 7, hasta ahora)", "HOY"), new Option("Corte actual (formato por turno)", ""));
       finesDeTurno().forEach((f) => sel.add(new Option("Turnos que terminan a las " + f, f)));
       try {
         const snap = await getDoc(doc(db, "config", "reporte"));
@@ -3869,6 +3956,7 @@ window.WP_MODULOS_HTML.kpi = function (res) {
         $("rep-activo").checked = d.activo === true;
         $("rep-correos").value = (d.correos || []).join(", ");
         if (d.minutosDespues !== undefined) $("rep-minutos").value = String(d.minutosDespues);
+        $("rep-modo").value = d.modo === "turno" ? "turno" : "dia";
       } catch (e) { $("rep-msg").textContent = mensajeAuth(e); }
       if (!cancelarEstadoReporte) {
         cancelarEstadoReporte = onSnapshot(doc(db, "config", "reporteEstado"), (snap) => {
@@ -3892,10 +3980,11 @@ window.WP_MODULOS_HTML.kpi = function (res) {
       if (correos.length > 30) { msg.textContent = "Máximo 30 correos."; return; }
       if ($("rep-activo").checked && !correos.length) { msg.textContent = "Agrega al menos un correo."; return; }
       try {
-        await setDoc(doc(db, "config", "reporte"), { activo: $("rep-activo").checked, correos, minutosDespues: parseInt($("rep-minutos").value, 10) || 10,
+        await setDoc(doc(db, "config", "reporte"), { activo: $("rep-activo").checked, correos, minutosDespues: parseInt($("rep-minutos").value, 10) || 10, modo: $("rep-modo").value === "turno" ? "turno" : "dia",
                                                      actualizadoEn: serverTimestamp(), actualizadoPor: perfilActual.usuario });
         $("rep-correos").value = correos.join(", ");
-        msg.textContent = $("rep-activo").checked ? "Guardado. El reporte se enviará al terminar cada turno." : "Guardado. El envío automático está apagado.";
+        msg.textContent = !$("rep-activo").checked ? "Guardado. El envío automático está apagado."
+          : ($("rep-modo").value === "turno" ? "Guardado. El reporte se enviará al terminar cada turno." : "Guardado. Se enviará un reporte al día, del día completo (7:00 a 7:00).");
         msg.classList.add("ok-msg");
       } catch (e) { msg.textContent = mensajeAuth(e); }
     }
