@@ -1591,16 +1591,15 @@ window.WP_MODULOS_HTML.kpi = function (res) {
         const ini = (+m[1]) * 60 + (+m[2]);
         let fin = (+m[3]) * 60 + (+m[4]);
         if (fin <= ini) fin += 1440;
-        // Filas por hora de reloj, como la hoja (E: 15:30-16:00, 16:00-17:00 … 23:00-23:30). Igual que Apps Script.
-        for (let t = ini; t < fin && filas.length < 24; ) {
-          const sig = Math.min(Math.floor(t / 60) * 60 + 60, fin);
-          filas.push({ ini: aHora(t), fin: aHora(sig), iniAbs: t < 420 ? t + 1440 : t, idx: ((Math.floor((t - 420) / 60) % 24) + 24) % 24 });
-          t = sig;
+        // Igual que el programa original y Apps Script: filas de 1 hora desde la entrada del turno
+        // (E 15:30-16:30 … 22:30-23:30). idx = número de fila dentro del turno (HoraIndex de la hoja);
+        // hc = hora de reloj de la fila (0 = 07:00) -> columna de meta M_hh_hh de la hoja.
+        for (let t = ini; t < fin && filas.length < 24; t += 60) {
+          filas.push({ ini: aHora(t), fin: aHora(Math.min(t + 60, fin)), iniAbs: t < 420 ? t + 1440 : t, idx: filas.length,
+                       hc: ((Math.floor((t - 420) / 60) % 24) + 24) % 24 });
         }
-        // Turno que empieza a la media hora: su primera fila comparte hora con el turno anterior -> 24 + hora
-        if (filas.length && ini % 60 !== 0) filas[0].idx += 24;
       }
-      if (!filas.length) HORAS_BOARD.forEach(([a, b], h) => filas.push({ ini: a, fin: b, iniAbs: aMin(a), idx: h }));
+      if (!filas.length) HORAS_BOARD.forEach(([a, b], h) => filas.push({ ini: a, fin: b, iniAbs: aMin(a), idx: h, hc: h }));
       return filas;
     }
     function horasDeTurno(turno) {
@@ -1655,7 +1654,10 @@ window.WP_MODULOS_HTML.kpi = function (res) {
       return { fecha: fechaDMY(d), fechaId: fechaISO(d), nowRel, ayer: dias === 1,
                capturable: nowRel < LIMITE_CAPTURA, enCurso: nowRel >= ini - MINUTOS_ANTES && nowRel < fin };
     }
-    const kCap = (fechaId, linea, idx) => fechaId + "_" + String(linea) + "_" + idx;
+    // Código corto del turno para las capturas: "F / 23:30 - 07:00 / LS" -> "F" (D y F usan las mismas filas 0, 1, 2…)
+    const tkDe = (turno) => String(turno || "").split("/")[0].toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 10);
+    const kCap = (fechaId, linea, idx, turno) => fechaId + "_" + String(linea) + "_" + idx + "_" + (typeof turno === "string" && turno.length <= 10 && !/\//.test(turno) ? turno : tkDe(turno));
+    const turnoEsManana = (turno) => { const r = rangoTurno(turno); return !r || r.ini === 420; };
 
     // ---------- Líneas y supervisores de cada turno ----------
     // config/asignaciones (lo edita el ADMIN aquí) > hoja Config_Lineas_Produccion (una línea, un turno)
@@ -1689,11 +1691,14 @@ window.WP_MODULOS_HTML.kpi = function (res) {
       const filas = horasDeTurno(turno);
       const inst = instanciaTurno(turno);
       return lista.map((x) => {
-        const b = (p.base && p.base[x.linea]) || (p.lineas || []).find((l) => String(l.linea) === x.linea) || {};
+        const kp = x.linea + "|" + claveTurno(turno);
+        const b = (p.base && (p.base[kp] || p.base[x.linea])) || (p.lineas || []).find((l) => String(l.linea) === x.linea && norm(l.turno) === norm(turno)) || {};
         const metas = {};
         filas.forEach((f, pos) => { metas[f.idx] = metaDeFila(x, f, pos, filas.length, b.metas); });
-        const r = (p.reales && p.reales[inst.fecha] && p.reales[inst.fecha][x.linea])
-               || (inst.fecha === p.fecha ? (p.lineas || []).find((l) => String(l.linea) === x.linea) : null) || {};
+        // Capturas: por línea + turno (las filas viejas sin turno son del turno de las 7:00)
+        const delDia = (p.reales && p.reales[inst.fecha]) || {};
+        const r = delDia[kp] || (turnoEsManana(turno) ? delDia[x.linea] : null)
+               || (inst.fecha === p.fecha ? (p.lineas || []).find((l) => String(l.linea) === x.linea && norm(l.turno) === norm(turno)) : null) || {};
         return { ...x, turno, metas, real: r.real || [], det: r.det || [], fechaId: inst.fechaId, fecha: inst.fecha };
       });
     }
@@ -1701,7 +1706,7 @@ window.WP_MODULOS_HTML.kpi = function (res) {
     function metaDeFila(x, f, pos, nFilas, metasHoja) {
       if (Array.isArray(x.metas) && x.metas.length === nFilas && x.metas[pos] !== null && x.metas[pos] !== undefined) return parseInt(x.metas[pos], 10) || 0;
       if (x.meta > 0) return Math.round(x.meta * durFila(f) / 60);
-      return parseInt(metasHoja?.[f.idx % 24], 10) || 0;
+      return parseInt(metasHoja?.[f.hc ?? (f.idx % 24)], 10) || 0;
     }
     function todosLosPuestos() {             // cada línea en cada turno que trabaja
       const lista = [];
@@ -1859,7 +1864,7 @@ window.WP_MODULOS_HTML.kpi = function (res) {
           metaTurnoLinea[i] += metaL;
           let v = Array.isArray(l.real) ? l.real[idx] : null;
           // Capturas hechas desde esta página que todavía no llegan a la hoja (o que fueron rechazadas)
-          const cap = esHoy ? (capturasHoy.get(kCap(inst.fechaId, l.linea, idx)) || capturasCentral.get(kCap(inst.fechaId, l.linea, idx))) : null;
+          const cap = esHoy ? (capturasHoy.get(kCap(inst.fechaId, l.linea, idx, l.turno)) || capturasCentral.get(kCap(inst.fechaId, l.linea, idx, l.turno))) : null;
           let marca = "", aviso = "";
           if (cap && cap.estado === "pendiente") { v = cap.real; marca = "pend"; aviso = "Guardado, pasando a la hoja…"; }
           else if (cap && cap.estado === "rechazado") { marca = "rech"; aviso = "Captura rechazada: " + (cap.motivo || ""); }
@@ -2595,7 +2600,7 @@ window.WP_MODULOS_HTML.kpi = function (res) {
       // hoy y ayer: el turno de noche que empezó ayer se sigue capturando en la madrugada
       cancelarCapturas = onSnapshot(query(collection(db, "capturas"), where("fechaId", "in", [fechaCapturas, fechaISO(ayer)])), (snap) => {
         capturasHoy.clear();
-        snap.forEach((d) => { const c = d.data(); capturasHoy.set(kCap(c.fechaId, c.linea, c.horaIndex), c); });
+        snap.forEach((d) => { const c = d.data(); capturasHoy.set(kCap(c.fechaId, c.linea, c.horaIndex, c.tk || "D"), c); });
         if (pizarronActual) pintarPizarron();
       }, (err) => console.warn("[Capturas]", err));
     }
@@ -2651,7 +2656,7 @@ window.WP_MODULOS_HTML.kpi = function (res) {
             if (meta <= 0) return;
             if (inst.nowRel < f.iniAbs + durFila(f) + MIN_RECORDATORIO) return;          // aún no pasan 10 min de que terminó
             const r = l.real?.[f.idx];
-            const cap = capturasHoy.get(kCap(inst.fechaId, l.linea, f.idx));
+            const cap = capturasHoy.get(kCap(inst.fechaId, l.linea, f.idx, l.turno));
             if ((r !== null && r !== undefined && r !== "") || (cap && cap.estado !== "rechazado")) return;
             lista.push({ l, f, turno, clave: inst.fecha + "_" + l.linea + "_" + f.idx });
           });
@@ -2736,11 +2741,11 @@ window.WP_MODULOS_HTML.kpi = function (res) {
       if (!puedeEditarLinea(l.linea)) { toast("Puedes ver la Línea " + l.linea + ", pero no capturar en ella.", 4000); return true; }
       if (!inst.capturable) { toast("Ese turno ya cerró.", 4000); return true; }
       const abiertas = horasActuales.filter((f) => inst.nowRel >= f.iniAbs - MINUTOS_ANTES);
-      const vacia = (f) => { const r = l.real?.[f.idx]; const c = capturasHoy.get(kCap(inst.fechaId, l.linea, f.idx)); return (r === null || r === undefined || r === "") && !(c && c.estado === "pendiente"); };
+      const vacia = (f) => { const r = l.real?.[f.idx]; const c = capturasHoy.get(kCap(inst.fechaId, l.linea, f.idx, l.turno)); return (r === null || r === undefined || r === "") && !(c && c.estado === "pendiente"); };
       let fila = idxPreferido !== undefined ? abiertas.find((f) => f.idx === idxPreferido) : null;
       fila = fila || abiertas.filter(vacia)[0] || abiertas[abiertas.length - 1];
       if (!fila) { toast("Todavía no empieza la primera hora del turno.", 4000); return true; }
-      const cap = capturasHoy.get(kCap(inst.fechaId, l.linea, fila.idx));
+      const cap = capturasHoy.get(kCap(inst.fechaId, l.linea, fila.idx, l.turno));
       setTimeout(() => abrirCaptura(l, fila.idx, cap), 450);
       return true;
     }
@@ -3157,9 +3162,9 @@ window.WP_MODULOS_HTML.kpi = function (res) {
       if (!/^[0-9]{4}$/.test(pin)) { $("cap-msg").textContent = "Escribe el PIN de 4 dígitos."; $("cap-pin").focus(); return; }
       const envio = { uid: datos.uid, supervisor: sup, pin, linea: datos.linea, fechaId: datos.fechaId, fecha: datos.fecha,
                       horaIndex: datos.horaIndex, real: datos.real, falla: datos.falla, comentario: datos.comentario,
-                      estado: "pendiente", creadoEn: serverTimestamp() };
+                      turno: datos.turno, tk: datos.tk, estado: "pendiente", creadoEn: serverTimestamp() };
       CAMPOS_6M.forEach((c) => { envio[c] = datos[c]; });
-      const clave = kCap(datos.fechaId, datos.linea, datos.horaIndex);
+      const clave = kCap(datos.fechaId, datos.linea, datos.horaIndex, datos.tk);
       $("cap-guardar").disabled = true;
       $("cap-guardar").textContent = "Revisando PIN…";
       $("cap-msg").textContent = "";
@@ -3222,7 +3227,7 @@ window.WP_MODULOS_HTML.kpi = function (res) {
             const meta = parseInt(l.metas?.[f.idx], 10) || 0;
             metaTot += meta;
             let v = l.real?.[f.idx];
-            const cap = capturasHoy.get(kCap(inst.fechaId, l.linea, f.idx)) || capturasCentral.get(kCap(inst.fechaId, l.linea, f.idx));
+            const cap = capturasHoy.get(kCap(inst.fechaId, l.linea, f.idx, l.turno)) || capturasCentral.get(kCap(inst.fechaId, l.linea, f.idx, l.turno));
             if ((v === null || v === undefined || v === "") && cap && cap.estado === "pendiente") v = cap.real;
             const empezo = inst.nowRel >= f.iniAbs - MINUTOS_ANTES;
             if (v !== null && v !== undefined && v !== "") {
@@ -3283,7 +3288,7 @@ window.WP_MODULOS_HTML.kpi = function (res) {
       if (fila) horasActuales = horasDeTurno(turno);
       const lin = lineasDelTurno(turno, "").find((x) => String(x.linea) === String(l.linea)) || l;
       const inst = instanciaTurno(turno);
-      abrirCaptura(lin, idx, capturasHoy.get(kCap(inst.fechaId, lin.linea, idx)) || null);
+      abrirCaptura(lin, idx, capturasHoy.get(kCap(inst.fechaId, lin.linea, idx, lin.turno || turno)) || null);
     }
 
     // ---------- Captura de una hora ----------
@@ -3293,7 +3298,7 @@ window.WP_MODULOS_HTML.kpi = function (res) {
       const fila = horasActuales.find((f) => f.idx === idx) || { ini: aHora(420 + idx * 60), fin: aHora(480 + idx * 60) };
       const ini = fila.ini, fin = fila.fin;
       const inst = instanciaTurno(l.turno || turnoActual);
-      capturaActual = { linea: String(l.linea), idx, fechaId: l.fechaId || inst.fechaId, fecha: l.fecha || inst.fecha };
+      capturaActual = { linea: String(l.linea), idx, fechaId: l.fechaId || inst.fechaId, fecha: l.fecha || inst.fecha, turno: String(l.turno || turnoActual || "") };
       $("cap-titulo").textContent = "Línea " + l.linea + " · " + ini + " – " + fin;
       $("cap-sub").textContent = "Meta de la hora: " + (parseInt(l.metas?.[idx], 10) || 0) + " pzs · Supervisor: " + (l.supervisor || "—");
       const base = (cap && cap.estado === "pendiente") ? cap : { real: l.real?.[idx], ...(l.det?.[idx] || {}) };
@@ -3334,6 +3339,8 @@ window.WP_MODULOS_HTML.kpi = function (res) {
           fechaId: capturaActual.fechaId,
           fecha: capturaActual.fecha,
           horaIndex: capturaActual.idx,
+          turno: capturaActual.turno.slice(0, 80),
+          tk: tkDe(capturaActual.turno) || "D",
           real: entero("cap-real", 100000, "la producción real", true),
           estado: "pendiente",
           falla: $("cap-falla").value.trim().toUpperCase().slice(0, 200),
@@ -3346,7 +3353,7 @@ window.WP_MODULOS_HTML.kpi = function (res) {
         return;
       }
       if (esCentral()) { await guardarCapturaCentral(datos); return; }
-      const id = datos.fechaId + "_L" + datos.linea + "_H" + datos.horaIndex;
+      const id = datos.fechaId + "_L" + datos.linea + "_H" + datos.horaIndex + "_T" + datos.tk;
       $("cap-guardar").disabled = true;
       $("cap-msg").textContent = "";
       $("cap-guardar").textContent = "Guardando…";
